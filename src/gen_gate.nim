@@ -86,6 +86,8 @@ proc Sink*(): TSink =
 proc Source*(updateFn: SignalUpdater): TSource =
   TSource(inputs: [], updateFn: updateFn, output: newOutput())
 
+converter toGate1(p: Parent): Gate[1] = Gate[1](p)
+
 macro make[N: Nat](T: typedesc[Gate[N]]) =
   var inputs = newTree(nnkBracket)
   for i in 0..<N:
@@ -148,7 +150,10 @@ when isMainModule:
     n = Not()
     sink = Sink()
   b.output ~~ n.A
+  assert b.output.connections[0].parent == n
   n.B ~~ sink.input
-  discard b.update
-  discard n.update
+  b.input.signal = H
+  let next = b.update
+  assert next[0] == n
+  discard Gate[1](next[0]).update
   echo sink.input.signal

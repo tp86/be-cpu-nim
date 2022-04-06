@@ -34,9 +34,6 @@ suite "input":
     check:
       input.signal == L
 
-  test "has parent (gate)":
-    skip
-
 suite "output":
   setup:
     let output = newOutput()

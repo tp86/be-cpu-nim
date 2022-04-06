@@ -58,7 +58,7 @@ proc updateDownstream(T: typedesc, fn: SignalUpdater, gate: Parent): seq[Parent]
   let gate = T(gate)
   let s = fn(gate.inputs.mapIt(it.signal))
   result = gate.output.propagate(s)
-template makeUpdate(parent: Parent, fn: SignalUpdater) =
+template addUpdateField(parent: Parent, fn: SignalUpdater) =
   parent.update = proc(p: Parent): seq[Parent] =
     updateDownstream(parent.typeOf, fn, p)
 proc update*(p: Parent): seq[Parent] =
@@ -89,69 +89,40 @@ proc Source*(updateFn: SignalUpdater): TSource =
   result = TSource()
   result.inputs = []
   result.output = newOutput()
-  makeUpdate(result, updateFn)
+  result.addUpdateField updateFn
 
-macro makeGate[N: Nat](T: typedesc[Gate[N]]) =
+macro declareGate[N: Nat](T: typedesc[Gate[N]]) =
   var inputs = newTree(nnkBracket)
   for i in 0..<N:
-    var input = newTree(nnkCall)
-    input.add ident("newInput")
-    input.add ident("result")
-    inputs.add input
+    inputs.add nnkCall.newTree(ident("newInput"), ident("result"))
   quote do:
     result = `T`(output: newOutput())
     result.inputs = `inputs`
 
 proc Broadcast*(): TBroadcast =
-  makeGate(TBroadcast)
+  declareGate(TBroadcast)
   let updateFn = proc(s: varargs[Signal]): Signal = s[0]
-  makeUpdate(result, updateFn)
-
-proc getArgsN(f: NimNode): int {.compileTime.} =
-  let impl = f.getImpl
-  expectKind impl, nnkFuncDef
-  for child in impl.children:
-    if child.kind == nnkFormalParams:
-      for param in child.children:
-        if param.kind == nnkIdentDefs:
-          for arg in param.children:
-            if arg.kind == nnkSym:
-              inc result
-
-macro asSignalUpdater(f: proc): untyped =
-  let n = getArgsN(f)
-  var call = newTree(nnkCall)
-  var quoted = newTree(nnkAccQuoted)
-  quoted.add ident($f)
-  call.add quoted
-  let s = ident("s")
-  for i in 0..<n:
-    call.add newTree(nnkBracketExpr, s, newLit(i))
-  result = newTree(nnkLambda,
-    newEmptyNode(),
-    newEmptyNode(),
-    newEmptyNode(),
-    newTree(nnkFormalParams,
-      ident("Signal"),
-      newTree(nnkIdentDefs,
-        ident("s"),
-        newTree(nnkBracketExpr,
-          ident("varargs"),
-          ident("Signal")),
-        newEmptyNode())),
-    newEmptyNode(),
-    newEmptyNode(),
-    newStmtList(call))
+  result.addUpdateField updateFn
 
 macro createGate(name: untyped, updater: proc) =
   let typeName = ident("T" & name.repr)
-  let n = getArgsN(updater)
+  # get number of `updater` args
+  var nArgs: int
+  for defs in updater.getImpl[3][1..^1]:
+    nArgs += defs.len - 2
+  let updaterId = genSym(nskProc)
+  let s = genSym(nskParam)
+  let call = newTree(nnkCall)
+  call.add nnkAccQuoted.newTree(ident($updater))
+  for i in 0..<nArgs:
+    call.add newTree(nnkBracketExpr, s, newLit(i))
   quote do:
     type
-      `typeName` = ref object of Gate[`n`]
+      `typeName` = ref object of Gate[`nArgs`]
     proc `name`*(): `typeName` =
-      makeGate(`typeName`)
-      makeUpdate(result, `updater`.asSignalUpdater)
+      declareGate(`typeName`)
+      proc `updaterId`(`s`: varargs[Signal]): Signal = `call`
+      result.addUpdateField `updaterId`
 
 createGate(Not,  sig.`!`)
 createGate(And,  sig.`&`)

@@ -96,9 +96,9 @@ suite "gates":
   test "not gate interface":
     let notGate = newNot()
     check:
-      typeOf(notGate.A) is Input
+      notGate.A.isInput
       notGate.A != nil
-      typeOf(notGate.B) is Output
+      notGate.B.isOutput
       notGate.B != nil
 
   test "not gate logic":
@@ -118,3 +118,13 @@ suite "gates":
     discard source.update
     discard notGate.update
     check sink.input.signal == L
+
+  test "and gate interface":
+    let andGate = newAnd()
+    check:
+      andGate.A.isInput
+      andGate.A != nil
+      andGate.B.isInput
+      andGate.B != nil
+      andGate.C.isOutput
+      andGate.C != nil

@@ -2,45 +2,65 @@ import std/sequtils
 import signal
 
 type
-  Input* = ref object
-    parent: Gate
-    sig: Signal
-    connected: bool
-  Output* = ref object
-    connections: seq[Input]
-    lastSignal: Signal
+  IOKind = enum
+    gIn
+    gOut
+  IO* = ref object
+    case kind: IOKind
+    of gIn:
+      parent: Gate
+      sig: Signal
+      connected: bool
+    of gOut:
+      connections: seq[IO]
+      lastSignal: Signal
   ConnectionError* = object of CatchableError
+  UsageError* = object of CatchableError
 
   GateKind = enum
     gSource
     gSink
     gIn1
+    gIn2
   Gate* = ref object
     case kind: GateKind
     of gSource:
       signal: proc (): Signal
-      output*: Output
+      output*: IO
     of gSink:
-      input*: Input
+      input*: IO
     of gIn1:
       signal1: proc (s: Signal): Signal
-      a1: Input
-      b1: Output
-  IO = Input or Output
+      a1: IO
+      b1: IO
+    of gIn2:
+      signal2: proc (s1, s2: Signal): Signal
+      a2, b2: IO
+      c2: IO
 
 using
-  i: Input
-  o: Output
+  i, o: IO
   s: Signal
   g: Gate
 
-proc newInput(g): Input = Input(parent: g)
+proc isInput*(i): bool =
+  i.kind == gIn
 
-proc signal*(i): Signal = i.sig
+proc isOutput*(o): bool =
+  o.kind == gOut
 
-proc newOutput(): Output = Output()
+proc newInput(g): IO = IO(kind: gIn, parent: g)
+
+proc signal*(i): Signal =
+  if i.kind != gIn:
+    raise newException(UsageError, "Cannot get signal out of Output")
+  i.sig
+
+proc newOutput(): IO = IO(kind: gOut)
 
 proc `~~`*(o, i) =
+  if o.kind != gOut and i.kind != gIn:
+    raise newException(UsageError, "Only Output ~~ Input connections are allowed")
   if i.connected:
     raise newException(ConnectionError, "Cannot connect multiple times to the same input")
   o.connections.add i
@@ -58,11 +78,18 @@ proc propagate(o, s): seq[Gate] =
 proc A*(g): IO =
   case g.kind
   of gIn1: g.a1
+  of gIn2: g.a2
   else: nil
 
 proc B*(g): IO =
   case g.kind
   of gIn1: g.b1
+  of gIn2: g.b2
+  else: nil
+
+proc C*(g): IO =
+  case g.kind
+  of gIn2: g.c2
   else: nil
 
 proc update*(g): seq[Gate] =
@@ -73,6 +100,9 @@ proc update*(g): seq[Gate] =
   of gIn1:
     let s = g.signal1(g.a1.signal)
     g.b1.propagate(s)
+  of gIn2:
+    let s = g.signal2(g.a2.signal, g.b2.signal)
+    g.c2.propagate(s)
 
 proc newSource*(signal: proc (): Signal): Gate =
   Gate(kind: gSource, signal: signal, output: newOutput())
@@ -87,3 +117,8 @@ proc newSink*(): Gate =
 proc newNot*(): Gate =
   result = Gate(kind: gIn1, signal1: `!`, b1: newOutput())
   result.a1 = newInput(result)
+
+proc newAnd*(): Gate =
+  result = Gate(kind: gIn2, signal2: `&`, c2: newOutput())
+  result.a2 = newInput(result)
+  result.b2 = newInput(result)

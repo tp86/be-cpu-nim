@@ -99,7 +99,7 @@ macro make[N: Nat](T: typedesc[Gate[N]]) =
 
 proc Broadcast*(): TBroadcast =
   make(TBroadcast)
-  result.updateFn = proc(s: array[1, Signal]): Signal = s[0]
+  result.updateFn = proc(s: openarray[Signal]): Signal = s[0]
 
 macro asSignalUpdater(f: proc): untyped =
   let impl = f.getImpl
@@ -126,8 +126,7 @@ macro asSignalUpdater(f: proc): untyped =
       newTree(nnkIdentDefs,
         ident("s"),
         newTree(nnkBracketExpr,
-          ident("array"),
-          newLit(n),
+          ident("openarray"),
           ident("Signal")),
         newEmptyNode())),
     newEmptyNode(),

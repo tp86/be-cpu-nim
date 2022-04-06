@@ -1,123 +1,162 @@
-import std/sequtils
-import signal
+import std/[macros, sequtils]
+import signal as sig
 
 type
-  IO* = ref object of RootObj # needed for A, B, C, ... accessors varying in return type
-  Input* = ref object of IO
-    parent: Gate
+  Input* = ref object
+    parent: Parent
     signal: Signal
     connected: bool
-  Output* = ref object of IO
+  Output* = ref object
     connections: seq[Input]
     lastSignal: Signal
+    propagated: bool
   ConnectionError* = object of CatchableError
 
-  GateKind = enum
-    gSource
-    gSink
-    gIn1
-    gIn2
-  Gate* = ref object
-    case kind: GateKind
-    of gSource:
-      signal: proc (): Signal
-      output*: Output
-    of gSink:
-      input*: Input
-    of gIn1:
-      signal1: proc (s: Signal): Signal
-      a1: Input
-      b1: Output
-    of gIn2:
-      signal2: proc (s1, s2: Signal): Signal
-      a2, b2: Input
-      c2: Output
+  Parent {.inheritable.} = ref object 
+    update: proc(p: Parent): seq[Parent]
+  Element* = Parent
+  Nat = static[Natural]
 
-using
-  i: Input
-  o: Output
-  s: Signal
-  g: Gate
+  SignalReceiver[N: Nat] = ref object of Parent
+    inputs: array[N, Input]
 
-proc newInput(g): Input = Input(parent: g)
+  TSink = SignalReceiver[1]
 
-proc signal*(i): Signal = i.signal
+  SignalUpdater = proc(_: varargs[Signal]): Signal
+  Gate[N: Nat] = ref object of SignalReceiver[N]
+    output: Output
 
+  TSource = ref object of Gate[0]
+
+  TBroadcast = ref object of Gate[1]
+
+proc newInput(parent: Parent): Input = Input(parent: parent)
 proc newOutput(): Output = Output()
 
-proc `~~`*(output, input: IO) =
-  let
-    o = try: output.Output
-        except ObjectConversionDefect:
-          raise newException(ConnectionError, "Connection must begin with Output")
-    i = try: input.Input
-        except ObjectConversionDefect:
-          raise newException(ConnectionError, "Connection must end with Input")
-  if i.connected:
-    raise newException(ConnectionError, "Cannot connect multiple times to the same input")
-  o.connections.add i
-  i.connected = true
+proc signal*(input: Input): Signal = input.signal
 
-proc propagate(o, s): seq[Gate] =
-  result = o.connections.mapIt(it.parent)
-  # depends on input's default signal
-  if s == o.lastSignal:
-    return @[]
-  o.lastSignal = s
-  for input in o.connections:
-    input.signal = s
+proc `~~`*(output: Output, input: Input) =
+  if input.connected:
+    raise newException(ConnectionError,
+  "Cannot connect multiple times to the same input")
+  input.connected = true
+  output.connections.add input
 
-func A*(g): IO =
-  case g.kind
-  of gIn1: g.a1
-  of gIn2: g.a2
-  else: nil
+proc propagate(output: Output, signal: Signal): seq[Parent] =
+  result = output.connections.mapIt(it.parent)
+  if output.propagated:
+    if signal == output.lastSignal:
+      return @[]
+  else:
+    output.propagated = true
+  output.lastSignal = signal
+  for input in output.connections:
+    input.signal = signal
 
-func B*(g): IO =
-  case g.kind
-  of gIn1: g.b1
-  of gIn2: g.b2
-  else: nil
+proc updateNoDownstream(p: Parent): seq[Parent] = @[]
+proc updateDownstream(T: typedesc, fn: SignalUpdater, gate: Parent): seq[Parent] =
+  let gate = T(gate)
+  let s = fn(gate.inputs.mapIt(it.signal))
+  result = gate.output.propagate(s)
+template makeUpdate(parent: Parent, fn: SignalUpdater) =
+  parent.update = proc(p: Parent): seq[Parent] =
+    updateDownstream(parent.typeOf, fn, p)
+proc update*(p: Parent): seq[Parent] =
+  p.update(p)
 
-func C*(g): IO =
-  case g.kind
-  of gIn2: g.c2
-  else: nil
+proc output*(source: TSource): Output = source.output
 
-proc update*(g): seq[Gate] =
-  case g.kind
-  of gSource:
-    g.output.propagate(g.signal())
-  of gSink: @[]
-  of gIn1:
-    let s = g.signal1(g.a1.signal)
-    g.b1.propagate(s)
-  of gIn2:
-    let s = g.signal2(g.a2.signal, g.b2.signal)
-    g.c2.propagate(s)
+proc input*(b: TBroadcast): Input = b.inputs[0]
+proc output*(b: TBroadcast): Output = b.output
 
-proc newSource*(signal: proc (): Signal): Gate =
-  Gate(kind: gSource, signal: signal, output: newOutput())
+proc input*(sink: TSink): Input = sink.inputs[0]
 
-proc newConstantSource*(s = L): Gate =
-  Gate(kind: gSource, signal: proc (): Signal = s, output: newOutput())
+proc A*[N: static[range[1..high(int)]]](receiver: SignalReceiver[N]): Input =
+  receiver.inputs[0]
 
-proc newSink*(): Gate =
-  result = Gate(kind: gSink)
-  result.input = newInput(result)
+proc B*[N: static[range[2..high(int)]]](receiver: SignalReceiver[N]): Input =
+  receiver.inputs[1]
+proc B*(gate: Gate[1]): Output = gate.output
 
-proc newNot*(): Gate =
-  result = Gate(kind: gIn1, signal1: `!`, b1: newOutput())
-  result.a1 = newInput(result)
+proc C*(gate: Gate[2]): Output = gate.output
 
-proc newGateIn2(p: proc (s1, s2: Signal): Signal): Gate =
-  result = Gate(kind: gIn2, signal2: p, c2: newOutput())
-  result.a2 = newInput(result)
-  result.b2 = newInput(result)
+proc Sink*(): TSink =
+  result = TSink()
+  result.inputs = [newInput(result)]
+  result.update = updateNoDownstream
 
-proc newAnd*(): Gate = newGateIn2(`&`)
-proc newOr*(): Gate = newGateIn2(`|`)
-proc newXor*(): Gate = newGateIn2(`^`)
-proc newNand*(): Gate = newGateIn2(`!&`)
-proc newNor*(): Gate = newGateIn2(`!|`)
-proc newNxor*(): Gate = newGateIn2(`!^`)
+proc Source*(updateFn: SignalUpdater): TSource =
+  result = TSource()
+  result.inputs = []
+  result.output = newOutput()
+  makeUpdate(result, updateFn)
+
+macro makeGate[N: Nat](T: typedesc[Gate[N]]) =
+  var inputs = newTree(nnkBracket)
+  for i in 0..<N:
+    var input = newTree(nnkCall)
+    input.add ident("newInput")
+    input.add ident("result")
+    inputs.add input
+  quote do:
+    result = `T`(output: newOutput())
+    result.inputs = `inputs`
+
+proc Broadcast*(): TBroadcast =
+  makeGate(TBroadcast)
+  let updateFn = proc(s: varargs[Signal]): Signal = s[0]
+  makeUpdate(result, updateFn)
+
+proc getArgsN(f: NimNode): int {.compileTime.} =
+  let impl = f.getImpl
+  expectKind impl, nnkFuncDef
+  for child in impl.children:
+    if child.kind == nnkFormalParams:
+      for param in child.children:
+        if param.kind == nnkIdentDefs:
+          for arg in param.children:
+            if arg.kind == nnkSym:
+              inc result
+
+macro asSignalUpdater(f: proc): untyped =
+  let n = getArgsN(f)
+  var call = newTree(nnkCall)
+  var quoted = newTree(nnkAccQuoted)
+  quoted.add ident($f)
+  call.add quoted
+  let s = ident("s")
+  for i in 0..<n:
+    call.add newTree(nnkBracketExpr, s, newLit(i))
+  result = newTree(nnkLambda,
+    newEmptyNode(),
+    newEmptyNode(),
+    newEmptyNode(),
+    newTree(nnkFormalParams,
+      ident("Signal"),
+      newTree(nnkIdentDefs,
+        ident("s"),
+        newTree(nnkBracketExpr,
+          ident("varargs"),
+          ident("Signal")),
+        newEmptyNode())),
+    newEmptyNode(),
+    newEmptyNode(),
+    newStmtList(call))
+
+macro createGate(name: untyped, updater: proc) =
+  let typeName = ident("T" & name.repr)
+  let n = getArgsN(updater)
+  quote do:
+    type
+      `typeName` = ref object of Gate[`n`]
+    proc `name`*(): `typeName` =
+      makeGate(`typeName`)
+      makeUpdate(result, `updater`.asSignalUpdater)
+
+createGate(Not,  sig.`!`)
+createGate(And,  sig.`&`)
+createGate(Or,   sig.`|`)
+createGate(Xor,  sig.`^`)
+createGate(Nand, sig.`!&`)
+createGate(Nor,  sig.`!|`)
+createGate(Nxor, sig.`!^`)

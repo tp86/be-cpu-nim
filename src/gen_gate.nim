@@ -10,9 +10,11 @@ type
   Output = ref object
     connections: seq[Input]
     lastSignal: Signal
+    propagated: bool
   ConnectionError = object of CatchableError
 
   Parent {.inheritable.} = ref object 
+    update: proc(p: Parent): seq[Parent]
   Nat = static[Natural]
 
   SignalReceiver[N: Nat] = ref object of Parent
@@ -20,9 +22,8 @@ type
 
   TSink = SignalReceiver[1]
 
-  SignalUpdater = proc(_: openarray[Signal]): Signal
+  SignalUpdater = proc(_: varargs[Signal]): Signal
   Gate[N: Nat] = ref object of SignalReceiver[N]
-    updateFn: SignalUpdater
     output: Output
 
   TSource = ref object of Gate[0]
@@ -51,9 +52,11 @@ proc `~~`*(output: Output, input: Input) =
 
 proc propagate(output: Output, signal: Signal): seq[Parent] =
   result = output.connections.mapIt(it.parent)
-  # depends on default signal value
-  if signal == output.lastSignal:
-    return @[]
+  if output.propagated:
+    if signal == output.lastSignal:
+      return @[]
+  else:
+    output.propagated = true
   output.lastSignal = signal
   for input in output.connections:
     input.signal = signal
@@ -74,21 +77,29 @@ proc B*(gate: Gate[1]): Output = gate.output
 
 proc C*(gate: Gate[2]): Output = gate.output
 
-proc update*[N: Nat](_: SignalReceiver): seq[Parent] = @[]
-proc update*[N: Nat](gate: Gate[N]): seq[Parent] =
-  let s = gate.updateFn(gate.inputs.mapIt(it.signal))
-  gate.output.propagate(s)
+proc update(p: Parent): seq[Parent] = @[]
+proc update(T: typedesc, fn: SignalUpdater, gate: Parent): seq[Parent] =
+  let gate = T(gate)
+  let s = fn(gate.inputs.mapIt(it.signal))
+  result = gate.output.propagate(s)
+macro makeUpdate(p: Parent, fn: SignalUpdater) =
+  let t = ident(p.getTypeInst.repr)
+  quote do:
+    `p`.update = proc(p: Parent): seq[Parent] =
+      update(`t`, `fn`, p)
 
 proc Sink*(): TSink =
   result = TSink()
   result.inputs = [newInput(result)]
+  result.update = update
 
 proc Source*(updateFn: SignalUpdater): TSource =
-  TSource(inputs: [], updateFn: updateFn, output: newOutput())
+  result = TSource()
+  result.inputs = []
+  result.output = newOutput()
+  result.makeUpdate updateFn
 
-converter toGate1(p: Parent): Gate[1] = Gate[1](p)
-
-macro make[N: Nat](T: typedesc[Gate[N]]) =
+macro makeGate[N: Nat](T: typedesc[Gate[N]]) =
   var inputs = newTree(nnkBracket)
   for i in 0..<N:
     var input = newTree(nnkCall)
@@ -98,10 +109,6 @@ macro make[N: Nat](T: typedesc[Gate[N]]) =
   quote do:
     result = `T`(output: newOutput())
     result.inputs = `inputs`
-
-proc Broadcast*(): TBroadcast =
-  make(TBroadcast)
-  result.updateFn = proc(s: openarray[Signal]): Signal = s[0]
 
 macro asSignalUpdater(f: proc): untyped =
   let impl = f.getImpl
@@ -135,25 +142,35 @@ macro asSignalUpdater(f: proc): untyped =
     newEmptyNode(),
     newStmtList(call))
 
-proc Not*(): TNot =
-  TNot.make
-  result.updateFn = signal.`!`.asSignalUpdater
+proc Broadcast*(): TBroadcast =
+  makeGate(TBroadcast)
+  let updateFn = proc(s: openarray[Signal]): Signal = s[0]
+  result.makeUpdate updateFn
 
-macro dump(arg: untyped) =
-  echo arg.treeRepr
-when isMainModule:
-  let b = Broadcast()
-  assert b.output != nil
-  assert b.inputs.len == 1
-  assert b.inputs[0].parent == b
-  let
-    n = Not()
-    sink = Sink()
-  b.output ~~ n.A
-  assert b.output.connections[0].parent == n
-  n.B ~~ sink.input
-  b.input.signal = H
-  let next = b.update
-  assert next[0] == n
-  discard Gate[1](next[0]).update
-  echo sink.input.signal
+proc Not*(): TNot =
+  makeGate(TNot)
+  result.makeUpdate signal.`!`.asSignalUpdater
+
+proc And*(): TAnd =
+  makeGate(TAnd)
+  result.makeUpdate signal.`&`.asSignalUpdater
+
+proc Or*(): TOr =
+  makeGate(TOr)
+  result.makeUpdate signal.`|`.asSignalUpdater
+
+proc Xor*(): TXor =
+  makeGate(TXor)
+  result.makeUpdate signal.`^`.asSignalUpdater
+
+proc Nand*(): TNand =
+  makeGate(TNand)
+  result.makeUpdate signal.`!&`.asSignalUpdater
+
+proc Nor*(): TNor =
+  makeGate(TNor)
+  result.makeUpdate signal.`!|`.asSignalUpdater
+
+proc Nxor*(): TNxor =
+  makeGate(TNxor)
+  result.makeUpdate signal.`!^`.asSignalUpdater

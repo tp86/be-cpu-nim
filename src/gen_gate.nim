@@ -106,22 +106,26 @@ proc Broadcast*(): TBroadcast =
   let updateFn = proc(s: openarray[Signal]): Signal = s[0]
   makeUpdate(result, updateFn)
 
-macro asSignalUpdater(f: proc): untyped =
+proc getArgsN(f: NimNode): int {.compileTime.} =
   let impl = f.getImpl
-  var n: int
+  expectKind impl, nnkFuncDef
   for child in impl.children:
     if child.kind == nnkFormalParams:
       for param in child.children:
         if param.kind == nnkIdentDefs:
           for arg in param.children:
             if arg.kind == nnkSym:
-              inc n
+              inc result
+
+macro asSignalUpdater(f: proc): untyped =
+  let n = getArgsN(f)
   var call = newTree(nnkCall)
   var quoted = newTree(nnkAccQuoted)
   quoted.add ident($f)
   call.add quoted
+  let s = ident("s")
   for i in 0..<n:
-    call.add newTree(nnkBracketExpr, ident("s"), newLit(i))
+    call.add newTree(nnkBracketExpr, s, newLit(i))
   result = newTree(nnkLambda,
     newEmptyNode(),
     newEmptyNode(),
@@ -138,17 +142,20 @@ macro asSignalUpdater(f: proc): untyped =
     newEmptyNode(),
     newStmtList(call))
 
-template createGate(typeName: untyped, inputs: Nat, updater: untyped) =
-  type
-    `T typeName` = ref object of Gate[`inputs`]
-  proc `typeName`*(): `T typeName` =
-    makeGate(`T typeName`)
-    makeUpdate(result, `updater`.asSignalUpdater)
+macro createGate(name: untyped, updater: proc) =
+  let typeName = ident("T" & name.repr)
+  let n = getArgsN(updater)
+  quote do:
+    type
+      `typeName` = ref object of Gate[`n`]
+    proc `name`*(): `typeName` =
+      makeGate(`typeName`)
+      makeUpdate(result, `updater`.asSignalUpdater)
 
-createGate(Not,  1, sig.`!`)
-createGate(And,  2, sig.`&`)
-createGate(Or,   2, sig.`|`)
-createGate(Xor,  2, sig.`^`)
-createGate(Nand, 2, sig.`!&`)
-createGate(Nor,  2, sig.`!|`)
-createGate(Nxor, 2, sig.`!^`)
+createGate(Not,  sig.`!`)
+createGate(And,  sig.`&`)
+createGate(Or,   sig.`|`)
+createGate(Xor,  sig.`^`)
+createGate(Nand, sig.`!&`)
+createGate(Nor,  sig.`!|`)
+createGate(Nxor, sig.`!^`)

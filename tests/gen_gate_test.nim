@@ -1,4 +1,4 @@
-import std/unittest
+import std/[sequtils, unittest]
 import signal as s
 import gen_gate
 
@@ -94,3 +94,208 @@ suite "signal propagation":
     signal = H
     source.output ~~ sink.input
     check sink.input.signal == L
+
+  test "source gate always propagates on first update":
+    let
+      source = Source(getSignal)
+      sink = Sink()
+
+    source.output ~~ sink.input
+    var next = source.update
+    check next.len > 0
+    next = source.update
+    check next.len == 0
+
+proc updateAll(fromElements: varargs[Element]) =
+  var elements = @fromElements
+  while elements.len > 0:
+    var next: seq[Element] = @[]
+    for element in elements:
+      next.add element.update
+    elements = next.deduplicate
+
+suite "broadcast":
+
+  setup:
+    let g = Broadcast()
+
+  test "interface":
+    check:
+      g.input is Input
+      g.output is Output
+
+  test "logic":
+    let
+      source = Source(getSignal)
+      sink = Sink()
+    source.output ~~ g.input
+    g.output ~~ sink.input
+
+    signal = L
+    updateAll source
+    check sink.input.signal == L
+
+    signal = H
+    updateAll source
+    check sink.input.signal == H
+
+suite "not":
+
+  setup:
+    let g = Not()
+
+  test "interface":
+    check:
+      g.A is Input
+      g.B is Output
+
+  test "logic":
+    let
+      source = Source(getSignal)
+      sink = Sink()
+    source.output ~~ g.A
+    g.B ~~ sink.input
+
+    signal = L
+    updateAll source
+    check sink.input.signal == H
+
+    signal = H
+    updateAll source
+    check sink.input.signal == L
+
+template testLogic(g: Element, cases: openarray[(array[2, Signal], Signal)]) =
+  var signalA, signalB: Signal
+  let
+    sourceA = Source(proc(_: varargs[Signal]): Signal = signalA)
+    sourceB = Source(proc(_: varargs[Signal]): Signal = signalB)
+    sink = Sink()
+  sourceA.output ~~ g.A
+  sourceB.output ~~ g.B
+  g.C ~~ sink.input
+
+  for (inputs, expected) in cases:
+    signalA = inputs[0]
+    signalB = inputs[1]
+    updateAll sourceA, sourceB
+    check sink.input.signal == expected
+
+suite "and":
+
+  setup:
+    let g = And()
+
+  test "interface":
+    check:
+      g.A is Input
+      g.B is Input
+      g.C is Output
+
+  test "logic":
+    let cases = [
+      ([L, L], L),
+      ([L, H], L),
+      ([H, L], L),
+      ([H, H], H),
+    ]
+    testLogic g, cases
+
+suite "or":
+
+  setup:
+    let g = Or()
+
+  test "interface":
+    check:
+      g.A is Input
+      g.B is Input
+      g.C is Output
+
+  test "logic":
+    let cases = [
+      ([L, L], L),
+      ([L, H], H),
+      ([H, L], H),
+      ([H, H], H),
+    ]
+    testLogic g, cases
+
+suite "xor":
+
+  setup:
+    let g = Xor()
+
+  test "interface":
+    check:
+      g.A is Input
+      g.B is Input
+      g.C is Output
+
+  test "logic":
+    let cases = [
+      ([L, L], L),
+      ([L, H], H),
+      ([H, L], H),
+      ([H, H], L),
+    ]
+    testLogic g, cases
+
+suite "nand":
+
+  setup:
+    let g = Nand()
+
+  test "interface":
+    check:
+      g.A is Input
+      g.B is Input
+      g.C is Output
+
+  test "logic":
+    let cases = [
+      ([L, L], H),
+      ([L, H], H),
+      ([H, L], H),
+      ([H, H], L),
+    ]
+    testLogic g, cases
+
+suite "nor":
+
+  setup:
+    let g = Nor()
+
+  test "interface":
+    check:
+      g.A is Input
+      g.B is Input
+      g.C is Output
+
+  test "logic":
+    let cases = [
+      ([L, L], H),
+      ([L, H], L),
+      ([H, L], L),
+      ([H, H], L),
+    ]
+    testLogic g, cases
+
+suite "nxor":
+
+  setup:
+    let g = Nxor()
+
+  test "interface":
+    check:
+      g.A is Input
+      g.B is Input
+      g.C is Output
+
+  test "logic":
+    let cases = [
+      ([L, L], H),
+      ([L, H], L),
+      ([H, L], L),
+      ([H, H], H),
+    ]
+    testLogic g, cases

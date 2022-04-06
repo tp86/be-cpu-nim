@@ -2,11 +2,11 @@ import std/[macros, sequtils]
 import signal as sig
 
 type
-  Input = ref object
+  Input* = ref object
     parent: Parent
     signal: Signal
     connected: bool
-  Output = ref object
+  Output* = ref object
     connections: seq[Input]
     lastSignal: Signal
     propagated: bool
@@ -14,6 +14,7 @@ type
 
   Parent {.inheritable.} = ref object 
     update: proc(p: Parent): seq[Parent]
+  Element* = Parent
   Nat = static[Natural]
 
   SignalReceiver[N: Nat] = ref object of Parent
@@ -103,7 +104,7 @@ macro makeGate[N: Nat](T: typedesc[Gate[N]]) =
 
 proc Broadcast*(): TBroadcast =
   makeGate(TBroadcast)
-  let updateFn = proc(s: openarray[Signal]): Signal = s[0]
+  let updateFn = proc(s: varargs[Signal]): Signal = s[0]
   makeUpdate(result, updateFn)
 
 proc getArgsN(f: NimNode): int {.compileTime.} =
@@ -135,7 +136,7 @@ macro asSignalUpdater(f: proc): untyped =
       newTree(nnkIdentDefs,
         ident("s"),
         newTree(nnkBracketExpr,
-          ident("openarray"),
+          ident("varargs"),
           ident("Signal")),
         newEmptyNode())),
     newEmptyNode(),

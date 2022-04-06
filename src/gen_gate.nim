@@ -1,6 +1,5 @@
-import std/sequtils
-import std/macros
-import signal
+import std/[macros, sequtils]
+import signal as sig
 
 type
   Input = ref object
@@ -30,14 +29,6 @@ type
 
   TBroadcast = ref object of Gate[1]
 
-  TNot = ref object of Gate[1]
-  TAnd = ref object of Gate[2]
-  TOr = ref object of Gate[2]
-  TXor = ref object of Gate[2]
-  TNand = ref object of Gate[2]
-  TNor = ref object of Gate[2]
-  TNxor = ref object of Gate[2]
-
 proc newInput(parent: Parent): Input = Input(parent: parent)
 proc newOutput(): Output = Output()
 
@@ -61,6 +52,17 @@ proc propagate(output: Output, signal: Signal): seq[Parent] =
   for input in output.connections:
     input.signal = signal
 
+proc updateNoDownstream(p: Parent): seq[Parent] = @[]
+proc updateDownstream(T: typedesc, fn: SignalUpdater, gate: Parent): seq[Parent] =
+  let gate = T(gate)
+  let s = fn(gate.inputs.mapIt(it.signal))
+  result = gate.output.propagate(s)
+template makeUpdate(parent: Parent, fn: SignalUpdater) =
+  parent.update = proc(p: Parent): seq[Parent] =
+    updateDownstream(parent.typeOf, fn, p)
+proc update*(p: Parent): seq[Parent] =
+  p.update(p)
+
 proc output*(source: TSource): Output = source.output
 
 proc input*(b: TBroadcast): Input = b.inputs[0]
@@ -77,27 +79,16 @@ proc B*(gate: Gate[1]): Output = gate.output
 
 proc C*(gate: Gate[2]): Output = gate.output
 
-proc update(p: Parent): seq[Parent] = @[]
-proc update(T: typedesc, fn: SignalUpdater, gate: Parent): seq[Parent] =
-  let gate = T(gate)
-  let s = fn(gate.inputs.mapIt(it.signal))
-  result = gate.output.propagate(s)
-template makeUpdate(parent: Parent, fn: SignalUpdater) =
-  parent.update = proc(p: Parent): seq[Parent] =
-    update(parent.typeOf, fn, p)
-template update*(p: Parent): untyped =
-  p.update(p)
-
 proc Sink*(): TSink =
   result = TSink()
   result.inputs = [newInput(result)]
-  result.update = update
+  result.update = updateNoDownstream
 
 proc Source*(updateFn: SignalUpdater): TSource =
   result = TSource()
   result.inputs = []
   result.output = newOutput()
-  result.makeUpdate updateFn
+  makeUpdate(result, updateFn)
 
 macro makeGate[N: Nat](T: typedesc[Gate[N]]) =
   var inputs = newTree(nnkBracket)
@@ -109,6 +100,11 @@ macro makeGate[N: Nat](T: typedesc[Gate[N]]) =
   quote do:
     result = `T`(output: newOutput())
     result.inputs = `inputs`
+
+proc Broadcast*(): TBroadcast =
+  makeGate(TBroadcast)
+  let updateFn = proc(s: openarray[Signal]): Signal = s[0]
+  makeUpdate(result, updateFn)
 
 macro asSignalUpdater(f: proc): untyped =
   let impl = f.getImpl
@@ -142,35 +138,17 @@ macro asSignalUpdater(f: proc): untyped =
     newEmptyNode(),
     newStmtList(call))
 
-proc Broadcast*(): TBroadcast =
-  makeGate(TBroadcast)
-  let updateFn = proc(s: openarray[Signal]): Signal = s[0]
-  result.makeUpdate updateFn
+template createGate(typeName: untyped, inputs: Nat, updater: untyped) =
+  type
+    `T typeName` = ref object of Gate[`inputs`]
+  proc `typeName`*(): `T typeName` =
+    makeGate(`T typeName`)
+    makeUpdate(result, `updater`.asSignalUpdater)
 
-proc Not*(): TNot =
-  makeGate(TNot)
-  result.makeUpdate signal.`!`.asSignalUpdater
-
-proc And*(): TAnd =
-  makeGate(TAnd)
-  result.makeUpdate signal.`&`.asSignalUpdater
-
-proc Or*(): TOr =
-  makeGate(TOr)
-  result.makeUpdate signal.`|`.asSignalUpdater
-
-proc Xor*(): TXor =
-  makeGate(TXor)
-  result.makeUpdate signal.`^`.asSignalUpdater
-
-proc Nand*(): TNand =
-  makeGate(TNand)
-  result.makeUpdate signal.`!&`.asSignalUpdater
-
-proc Nor*(): TNor =
-  makeGate(TNor)
-  result.makeUpdate signal.`!|`.asSignalUpdater
-
-proc Nxor*(): TNxor =
-  makeGate(TNxor)
-  result.makeUpdate signal.`!^`.asSignalUpdater
+createGate(Not,  1, sig.`!`)
+createGate(And,  2, sig.`&`)
+createGate(Or,   2, sig.`|`)
+createGate(Xor,  2, sig.`^`)
+createGate(Nand, 2, sig.`!&`)
+createGate(Nor,  2, sig.`!|`)
+createGate(Nxor, 2, sig.`!^`)

@@ -2,20 +2,15 @@ import std/sequtils
 import signal
 
 type
-  IOKind = enum
-    gIn
-    gOut
-  IO* = ref object
-    case kind: IOKind
-    of gIn:
-      parent: Gate
-      sig: Signal
-      connected: bool
-    of gOut:
-      connections: seq[IO]
-      lastSignal: Signal
+  IO* = ref object of RootObj
+  Input* = ref object of IO
+    parent: Gate
+    sig: Signal
+    connected: bool
+  Output* = ref object of IO
+    connections: seq[Input]
+    lastSignal: Signal
   ConnectionError* = object of CatchableError
-  UsageError* = object of CatchableError
 
   GateKind = enum
     gSource
@@ -26,41 +21,40 @@ type
     case kind: GateKind
     of gSource:
       signal: proc (): Signal
-      output*: IO
+      output*: Output
     of gSink:
-      input*: IO
+      input*: Input
     of gIn1:
       signal1: proc (s: Signal): Signal
-      a1: IO
-      b1: IO
+      a1: Input
+      b1: Output
     of gIn2:
       signal2: proc (s1, s2: Signal): Signal
-      a2, b2: IO
-      c2: IO
+      a2, b2: Input
+      c2: Output
 
 using
-  i, o: IO
+  i: Input
+  o: Output
   s: Signal
   g: Gate
 
-proc isInput*(i): bool =
-  i.kind == gIn
+proc newInput(g): Input = Input(parent: g)
 
-proc isOutput*(o): bool =
-  o.kind == gOut
-
-proc newInput(g): IO = IO(kind: gIn, parent: g)
-
-proc signal*(i): Signal =
-  if i.kind != gIn:
-    raise newException(UsageError, "Cannot get signal out of Output")
+proc signal*(input: IO): Signal =
+  let i = input.Input
   i.sig
 
-proc newOutput(): IO = IO(kind: gOut)
+proc newOutput(): Output = Output()
 
-proc `~~`*(o, i) =
-  if o.kind != gOut and i.kind != gIn:
-    raise newException(UsageError, "Only Output ~~ Input connections are allowed")
+proc `~~`*(output, input: IO) =
+  let
+    o = try: output.Output
+        except ObjectConversionDefect:
+          raise newException(ConnectionError, "Connection must begin with Output")
+    i = try: input.Input
+        except ObjectConversionDefect:
+          raise newException(ConnectionError, "Connection must end with Input")
   if i.connected:
     raise newException(ConnectionError, "Cannot connect multiple times to the same input")
   o.connections.add i

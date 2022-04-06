@@ -23,6 +23,20 @@ suite "gate connections":
     source.output ~~ sink.input
     source.output ~~ sink2.input
 
+  test "output cannot be connected to output":
+    let source2 = newConstantSource()
+    expect(ConnectionError):
+      source.output ~~ source2.output
+
+  test "input cannot be connected to output":
+    expect(ConnectionError):
+      sink.input ~~ source.output
+
+  test "input cannot be connected to input":
+    let sink2 = newSink()
+    expect(ConnectionError):
+      sink.input ~~ sink2.input
+
 suite "gate signal propagation":
 
   test "default (unconnected) input signal value is low":
@@ -95,10 +109,10 @@ suite "gates":
 
   test "not gate interface":
     let notGate = newNot()
+    discard notGate.A.Input
+    discard notGate.B.Output
     check:
-      notGate.A.isInput
       notGate.A != nil
-      notGate.B.isOutput
       notGate.B != nil
 
   test "not gate logic":
@@ -121,10 +135,10 @@ suite "gates":
 
   test "and gate interface":
     let andGate = newAnd()
+    discard andGate.A.Input
+    discard andGate.B.Input
+    discard andGate.C.Output
     check:
-      andGate.A.isInput
       andGate.A != nil
-      andGate.B.isInput
       andGate.B != nil
-      andGate.C.isOutput
       andGate.C != nil

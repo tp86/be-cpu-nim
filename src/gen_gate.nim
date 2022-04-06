@@ -1,4 +1,5 @@
 import std/sequtils
+import std/macros
 import signal
 
 type
@@ -11,31 +12,30 @@ type
     lastSignal: Signal
   ConnectionError = object of CatchableError
 
-  Parent = ref object {.inheritable.}
+  Parent {.inheritable.} = ref object 
   Nat = static[Natural]
 
   SignalReceiver[N: Nat] = ref object of Parent
     inputs: array[N, Input]
 
-  Sink = SignalReceiver[1]
+  TSink = SignalReceiver[1]
 
-  SignalUpdater = proc (_: varargs[Signal]): Signal
-
+  SignalUpdater = proc(_: openarray[Signal]): Signal
   Gate[N: Nat] = ref object of SignalReceiver[N]
     updateFn: SignalUpdater
     output: Output
 
-  Source = ref object of Gate[0]
+  TSource = ref object of Gate[0]
 
-  Broadcast = ref object of Gate[1]
+  TBroadcast = ref object of Gate[1]
 
-  Not = ref object of Gate[1]
-  And = ref object of Gate[2]
-  Or = ref object of Gate[2]
-  Xor = ref object of Gate[2]
-  Nand = ref object of Gate[2]
-  Nor = ref object of Gate[2]
-  Nxor = ref object of Gate[2]
+  TNot = ref object of Gate[1]
+  TAnd = ref object of Gate[2]
+  TOr = ref object of Gate[2]
+  TXor = ref object of Gate[2]
+  TNand = ref object of Gate[2]
+  TNor = ref object of Gate[2]
+  TNxor = ref object of Gate[2]
 
 proc newInput(parent: Parent): Input = Input(parent: parent)
 proc newOutput(): Output = Output()
@@ -45,7 +45,7 @@ proc signal*(input: Input): Signal = input.signal
 proc `~~`*(output: Output, input: Input) =
   if input.connected:
     raise newException(ConnectionError,
-      "Cannot connect multiple times to the same input")
+  "Cannot connect multiple times to the same input")
   input.connected = true
   output.connections.add input
 
@@ -58,12 +58,12 @@ proc propagate(output: Output, signal: Signal): seq[Parent] =
   for input in output.connections:
     input.signal = signal
 
-proc output*(source: Source): Output = source.output
+proc output*(source: TSource): Output = source.output
 
-proc input*(b: Broadcast): Input = b.inputs[0]
-proc output*(b: Broadcast): Output = b.output
+proc input*(b: TBroadcast): Input = b.inputs[0]
+proc output*(b: TBroadcast): Output = b.output
 
-proc input*(sink: Sink): Input = sink.inputs[0]
+proc input*(sink: TSink): Input = sink.inputs[0]
 
 proc A*[N: static[range[1..high(int)]]](receiver: SignalReceiver[N]): Input =
   receiver.inputs[0]
@@ -79,19 +79,77 @@ proc update*[N: Nat](gate: Gate[N]): seq[Parent] =
   let s = gate.updateFn(gate.inputs.mapIt(it.signal))
   gate.output.propagate(s)
 
-proc newSink(): Sink =
-  result = Sink()
+proc Sink*(): TSink =
+  result = TSink()
   result.inputs = [newInput(result)]
 
-proc newSource(updateFn: SignalUpdater): Source =
-  Source(inputs: [], updateFn: updateFn, output: newOutput())
+proc Source*(updateFn: SignalUpdater): TSource =
+  TSource(inputs: [], updateFn: updateFn, output: newOutput())
 
+macro make[N: Nat](T: typedesc[Gate[N]]) =
+  var inputs = newTree(nnkBracket)
+  for i in 0..<N:
+    var input = newTree(nnkCall)
+    input.add ident("newInput")
+    input.add ident("result")
+    inputs.add input
+  quote do:
+    result = `T`(output: newOutput())
+    result.inputs = `inputs`
+
+proc Broadcast*(): TBroadcast =
+  make(TBroadcast)
+  result.updateFn = proc(s: array[1, Signal]): Signal = s[0]
+
+macro asSignalUpdater(f: proc): untyped =
+  let impl = f.getImpl
+  var n: int
+  for child in impl.children:
+    if child.kind == nnkFormalParams:
+      for param in child.children:
+        if param.kind == nnkIdentDefs:
+          for arg in param.children:
+            if arg.kind == nnkSym:
+              inc n
+  var call = newTree(nnkCall)
+  var quoted = newTree(nnkAccQuoted)
+  quoted.add ident($f)
+  call.add quoted
+  for i in 0..<n:
+    call.add newTree(nnkBracketExpr, ident("s"), newLit(i))
+  result = newTree(nnkLambda,
+    newEmptyNode(),
+    newEmptyNode(),
+    newEmptyNode(),
+    newTree(nnkFormalParams,
+      ident("Signal"),
+      newTree(nnkIdentDefs,
+        ident("s"),
+        newTree(nnkBracketExpr,
+          ident("array"),
+          newLit(n),
+          ident("Signal")),
+        newEmptyNode())),
+    newEmptyNode(),
+    newEmptyNode(),
+    newStmtList(call))
+
+proc Not*(): TNot =
+  TNot.make
+  result.updateFn = signal.`!`.asSignalUpdater
+
+macro dump(arg: untyped) =
+  echo arg.treeRepr
 when isMainModule:
-  var sig = H
+  let b = Broadcast()
+  assert b.output != nil
+  assert b.inputs.len == 1
+  assert b.inputs[0].parent == b
   let
-    source = newSource(proc(_: varargs[Signal]): Signal = sig)
-    sink = newSink()
-  source.output ~~ sink.input
-  let next = source.update
-  assert next[0] == sink
+    n = Not()
+    sink = Sink()
+  b.output ~~ n.A
+  n.B ~~ sink.input
+  discard b.update
+  discard n.update
   echo sink.input.signal

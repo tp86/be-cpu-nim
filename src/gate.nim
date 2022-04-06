@@ -41,9 +41,7 @@ using
 
 proc newInput(g): Input = Input(parent: g)
 
-method signal(io: IO): Signal {.base.} = discard
-
-method signal*(i): Signal = i.signal
+proc signal*(i): Signal = i.signal
 
 proc newOutput(): Output = Output()
 

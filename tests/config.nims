@@ -1,1 +1,2 @@
---outdir:"/tmp"
+import os
+switch("outdir", getTempDir())

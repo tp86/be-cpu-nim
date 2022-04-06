@@ -133,17 +133,17 @@ suite "gates":
     discard notGate.update
     check sink.input.signal == L
 
-  test "and gate interface":
-    let andGate = newAnd()
-    discard andGate.A.Input
-    discard andGate.B.Input
-    discard andGate.C.Output
+  proc checkInterface(gateConstructor: proc (): Gate) =
+    let gate = gateConstructor()
+    discard gate.A.Input
+    discard gate.B.Input
+    discard gate.C.Output
     check:
-      andGate.A != nil
-      andGate.B != nil
-      andGate.C != nil
+      gate.A != nil
+      gate.B != nil
+      gate.C != nil
 
-  proc check(gateConstructor: proc (): Gate,
+  proc checkLogic(gateConstructor: proc (): Gate,
              testCases: openarray[tuple[a, b, expected: Signal]]) =
     var signalA, signalB: Signal
     let
@@ -164,9 +164,67 @@ suite "gates":
       discard gate.update
       check sink.input.signal == signals.expected
 
+  test "and gate interface":
+    checkInterface(newAnd)
+
   test "and gate logic":
-    check(newAnd, [
+    checkLogic(newAnd, [
       (L, L, L),
+      (L, H, L),
+      (H, L, L),
+      (H, H, H),
+    ])
+
+  test "or gate interface":
+    checkInterface(newOr)
+
+  test "or gate logic":
+    checkLogic(newOr, [
+      (L, L, L),
+      (L, H, H),
+      (H, L, H),
+      (H, H, H),
+    ])
+
+  test "xor gate interface":
+    checkInterface(newXor)
+
+  test "xor gate logic":
+    checkLogic(newXor, [
+      (L, L, L),
+      (L, H, H),
+      (H, L, H),
+      (H, H, L),
+    ])
+
+  test "nand gate interface":
+    checkInterface(newNand)
+
+  test "nand gate logic":
+    checkLogic(newNand, [
+      (L, L, H),
+      (L, H, H),
+      (H, L, H),
+      (H, H, L),
+    ])
+
+  test "nor gate interface":
+    checkInterface(newNor)
+
+  test "nor gate logic":
+    checkLogic(newNor, [
+      (L, L, H),
+      (L, H, L),
+      (H, L, L),
+      (H, H, L),
+    ])
+
+  test "nxor gate interface":
+    checkInterface(newNxor)
+
+  test "nxor gate logic":
+    checkLogic(newNxor, [
+      (L, L, H),
       (L, H, L),
       (H, L, L),
       (H, H, H),

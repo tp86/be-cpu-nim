@@ -118,3 +118,8 @@ proc newGateIn2(p: proc (s1, s2: Signal): Signal): Gate =
   result.b2 = newInput(result)
 
 proc newAnd*(): Gate = newGateIn2(`&`)
+proc newOr*(): Gate = newGateIn2(`|`)
+proc newXor*(): Gate = newGateIn2(`^`)
+proc newNand*(): Gate = newGateIn2(`!&`)
+proc newNor*(): Gate = newGateIn2(`!|`)
+proc newNxor*(): Gate = newGateIn2(`!^`)

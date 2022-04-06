@@ -9,23 +9,28 @@ type
     lastSignal: Signal
   ConnectionError* = object of CatchableError
 
+using
+  i: Input
+  o: Output
+  s: Signal
+
 proc newInput*(): Input = Input()
 
-proc signal*(input: Input): Signal = input.sig
+proc signal*(i): Signal = i.sig
 
 proc newOutput*(): Output = Output()
 
-proc connect*(output: Output, input: Input) =
-  if input.connected:
+proc connect*(o, i) =
+  if i.connected:
     raise newException(ConnectionError, "Cannot connect multiple times to the same input")
-  output.connections.add input
-  input.connected = true
+  o.connections.add i
+  i.connected = true
 
-proc propagate*(output: Output, signal: Signal): seq[Input] =
-  result = output.connections
+proc propagate*(o, s): seq[Input] =
+  result = o.connections
   # depends on input's default signal
-  if signal == output.lastSignal:
+  if s == o.lastSignal:
     return @[]
-  output.lastSignal = signal
-  for input in output.connections:
-    input.sig = signal
+  o.lastSignal = s
+  for input in o.connections:
+    input.sig = s

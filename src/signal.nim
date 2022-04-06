@@ -2,31 +2,34 @@ type
   Signal* = enum
     L, H
 
-func `!`*(signal: Signal): Signal =
-  case signal:
+using
+  s, s1, s2: Signal
+
+func `!`*(s): Signal =
+  case s:
   of H: L
   of L: H
 
-func `&`*(signal1, signal2: Signal): Signal =
+func `&`*(s1, s2): Signal =
   result = L
-  if signal1 == H and signal2 == H: return H
+  if s1 == H and s2 == H: return H
 
-func `|`*(signal1, signal2: Signal): Signal =
+func `|`*(s1, s2): Signal =
   result = H
-  if signal1 == L and signal2 == L: return L
+  if s1 == L and s2 == L: return L
 
-func `^`*(signal1, signal2: Signal): Signal =
+func `^`*(s1, s2): Signal =
   result = H
-  if signal1 == signal2: return L
+  if s1 == s2: return L
 
-func `!&`*(signal1, signal2: Signal): Signal =
+func `!&`*(s1, s2): Signal =
   result = H
-  if signal1 == H and signal2 == H: return L
+  if s1 == H and s2 == H: return L
 
-func `!|`*(signal1, signal2: Signal): Signal =
+func `!|`*(s1, s2): Signal =
   result = L
-  if signal1 == L and signal2 == L: return H
+  if s1 == L and s2 == L: return H
 
-func `!^`*(signal1, signal2: Signal): Signal =
+func `!^`*(s1, s2): Signal =
   result = H
-  if signal1 != signal2: return L
+  if s1 != s2: return L

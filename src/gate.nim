@@ -5,7 +5,7 @@ type
   IO* = ref object of RootObj
   Input* = ref object of IO
     parent: Gate
-    sig: Signal
+    signal: Signal
     connected: bool
   Output* = ref object of IO
     connections: seq[Input]
@@ -42,8 +42,10 @@ using
 proc newInput(g): Input = Input(parent: g)
 
 proc signal*(input: IO): Signal =
-  let i = input.Input
-  i.sig
+  let i = try: input.Input
+          except ObjectConversionDefect:
+            raise newException(FieldDefect, "Can only get signal from Input")
+  i.signal
 
 proc newOutput(): Output = Output()
 
@@ -67,7 +69,7 @@ proc propagate(o, s): seq[Gate] =
     return @[]
   o.lastSignal = s
   for input in o.connections:
-    input.sig = s
+    input.signal = s
 
 proc A*(g): IO =
   case g.kind

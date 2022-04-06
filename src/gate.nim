@@ -2,7 +2,7 @@ import std/sequtils
 import signal
 
 type
-  IO* = ref object of RootObj
+  IO* = ref object of RootObj # needed for A, B, C, ... accessors varying in return type
   Input* = ref object of IO
     parent: Gate
     signal: Signal
@@ -41,11 +41,9 @@ using
 
 proc newInput(g): Input = Input(parent: g)
 
-proc signal*(input: IO): Signal =
-  let i = try: input.Input
-          except ObjectConversionDefect:
-            raise newException(FieldDefect, "Can only get signal from Input")
-  i.signal
+method signal(io: IO): Signal {.base.} = discard
+
+method signal*(i): Signal = i.signal
 
 proc newOutput(): Output = Output()
 
@@ -71,19 +69,19 @@ proc propagate(o, s): seq[Gate] =
   for input in o.connections:
     input.signal = s
 
-proc A*(g): IO =
+func A*(g): IO =
   case g.kind
   of gIn1: g.a1
   of gIn2: g.a2
   else: nil
 
-proc B*(g): IO =
+func B*(g): IO =
   case g.kind
   of gIn1: g.b1
   of gIn2: g.b2
   else: nil
 
-proc C*(g): IO =
+func C*(g): IO =
   case g.kind
   of gIn2: g.c2
   else: nil
@@ -114,7 +112,9 @@ proc newNot*(): Gate =
   result = Gate(kind: gIn1, signal1: `!`, b1: newOutput())
   result.a1 = newInput(result)
 
-proc newAnd*(): Gate =
-  result = Gate(kind: gIn2, signal2: `&`, c2: newOutput())
+proc newGateIn2(p: proc (s1, s2: Signal): Signal): Gate =
+  result = Gate(kind: gIn2, signal2: p, c2: newOutput())
   result.a2 = newInput(result)
   result.b2 = newInput(result)
+
+proc newAnd*(): Gate = newGateIn2(`&`)

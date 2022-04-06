@@ -142,3 +142,32 @@ suite "gates":
       andGate.A != nil
       andGate.B != nil
       andGate.C != nil
+
+  proc check(gateConstructor: proc (): Gate,
+             testCases: openarray[tuple[a, b, expected: Signal]]) =
+    var signalA, signalB: Signal
+    let
+      sourceA = newSource(proc(): Signal = signalA)
+      sourceB = newSource(proc(): Signal = signalB)
+      sink = newSink()
+      gate = gateConstructor()
+
+    sourceA.output ~~ gate.A
+    sourceB.output ~~ gate.B
+    gate.C ~~ sink.input
+
+    for signals in testCases:
+      signalA = signals.a
+      signalB = signals.b
+      discard sourceA.update
+      discard sourceB.update
+      discard gate.update
+      check sink.input.signal == signals.expected
+
+  test "and gate logic":
+    check(newAnd, [
+      (L, L, L),
+      (L, H, L),
+      (H, L, L),
+      (H, H, H),
+    ])

@@ -42,10 +42,45 @@ suite "output":
     let output = newOutput()
 
   test "propagates signal change":
-    skip
+    # this test would not be correct if output propagated signal on connection as well
+    let input = newInput()
+    output.connect(input)
+    discard output.propagate(L)
+    check input.signal == L
+    discard output.propagate(H)
+    check input.signal == H
+    let input2 = newInput()
+    output.connect(input2)
+    # this should not be propagated as signal didn't change
+    discard output.propagate(H)
+    # input2 should still have default signal
+    check input2.signal == L
 
   test "propagates signal to all connected inputs":
-    skip
+    let
+      input1 = newInput()
+      input2 = newInput()
+    output.connect(input1)
+    output.connect(input2)
+    discard output.propagate(H)
+    check:
+      input1.signal == H
+      input2.signal == H
 
   test "returns inputs to which signal was propagated":
-    skip
+    let
+      input1 = newInput()
+      input2 = newInput()
+    output.connect(input1)
+    output.connect(input2)
+    let inputs = output.propagate(H)
+    check inputs == @[input1, input2]
+
+  test "does not propagate signal on connection":
+    # connections are not meant to be made dynamically
+    let input = newInput()
+    output.connect(input)
+    discard output.propagate(H)
+    let input2 = newInput()
+    output.connect(input2)
+    check input2.signal == L

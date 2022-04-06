@@ -1,6 +1,6 @@
 type
   Signal* = enum
-    H, L
+    L, H
 
 func `!`*(signal: Signal): Signal =
   case signal:

@@ -82,11 +82,9 @@ proc update(T: typedesc, fn: SignalUpdater, gate: Parent): seq[Parent] =
   let gate = T(gate)
   let s = fn(gate.inputs.mapIt(it.signal))
   result = gate.output.propagate(s)
-macro makeUpdate(p: Parent, fn: SignalUpdater) =
-  let t = ident(p.getTypeInst.repr)
-  quote do:
-    `p`.update = proc(p: Parent): seq[Parent] =
-      update(`t`, `fn`, p)
+template makeUpdate(parent: Parent, fn: SignalUpdater) =
+  parent.update = proc(p: Parent): seq[Parent] =
+    update(parent.typeOf, fn, p)
 template update*(p: Parent): untyped =
   p.update(p)
 

@@ -9,20 +9,19 @@ type
   Output = ref object
     connections: seq[Input]
     lastSignal: Signal
-
   ConnectionError = object of CatchableError
 
   Parent = ref object {.inheritable.}
   Nat = static[Natural]
 
-  SinkN[N: Nat] = ref object of Parent
+  SignalReceiver[N: Nat] = ref object of Parent
     inputs: array[N, Input]
 
-  Sink = SinkN[1]
+  Sink = SignalReceiver[1]
 
-  SignalUpdater = proc (signals: varargs[Signal]): Signal
+  SignalUpdater = proc (_: varargs[Signal]): Signal
 
-  Gate[N: Nat] = ref object of SinkN[N]
+  Gate[N: Nat] = ref object of SignalReceiver[N]
     updateFn: SignalUpdater
     output: Output
 
@@ -66,14 +65,16 @@ proc output*(b: Broadcast): Output = b.output
 
 proc input*(sink: Sink): Input = sink.inputs[0]
 
-proc A*[N: static[range[1..high(int)]]](sink: SinkN[N]): Input = sink.inputs[0]
+proc A*[N: static[range[1..high(int)]]](receiver: SignalReceiver[N]): Input =
+  receiver.inputs[0]
 
-proc B*[N: static[range[2..high(int)]]](sink: SinkN[N]): Input = sink.inputs[1]
+proc B*[N: static[range[2..high(int)]]](receiver: SignalReceiver[N]): Input =
+  receiver.inputs[1]
 proc B*(gate: Gate[1]): Output = gate.output
 
 proc C*(gate: Gate[2]): Output = gate.output
 
-proc update*(sink: Sink): seq[Parent] = @[]
+proc update*[N: Nat](_: SignalReceiver): seq[Parent] = @[]
 proc update*[N: Nat](gate: Gate[N]): seq[Parent] =
   let s = gate.updateFn(gate.inputs.mapIt(it.signal))
   gate.output.propagate(s)

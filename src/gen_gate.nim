@@ -11,7 +11,7 @@ type
     connections: seq[Input]
     lastSignal: Signal
     propagated: bool
-  ConnectionError = object of CatchableError
+  ConnectionError* = object of CatchableError
 
   Parent {.inheritable.} = ref object 
     update: proc(p: Parent): seq[Parent]
@@ -87,6 +87,8 @@ macro makeUpdate(p: Parent, fn: SignalUpdater) =
   quote do:
     `p`.update = proc(p: Parent): seq[Parent] =
       update(`t`, `fn`, p)
+template update*(p: Parent): untyped =
+  p.update(p)
 
 proc Sink*(): TSink =
   result = TSink()

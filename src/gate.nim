@@ -53,7 +53,10 @@ proc propagate(output: Output, signal: Signal): seq[Parent] =
   for input in output.connections:
     input.signal = signal
 
-proc updateNoDownstream(p: Parent): seq[Parent] = @[]
+proc updateNoDownstream(T: typedesc, fn: proc(_: varargs[Signal]), p: Parent): seq[Parent] =
+  result = @[]
+  let gate = T(p)
+  fn(gate.inputs.mapIt(it.signal))
 proc updateDownstream(T: typedesc, fn: SignalUpdater, gate: Parent): seq[Parent] =
   let gate = T(gate)
   let s = fn(gate.inputs.mapIt(it.signal))
@@ -80,10 +83,12 @@ proc B*(gate: Gate[1]): Output = gate.output
 
 proc C*(gate: Gate[2]): Output = gate.output
 
-proc Sink*(): TSink =
-  result = TSink()
+proc Sink*(updateFn: proc(_: varargs[Signal]) = proc(_: varargs[Signal]) = discard): TSink =
+  let sink = TSink()
+  result = sink
   result.inputs = [newInput(result)]
-  result.update = updateNoDownstream
+  result.update = proc(p: Parent): seq[Parent] =
+    updateNoDownstream(sink.typeOf, updateFn, p)
 
 proc Source*(updateFn: SignalUpdater): TSource =
   result = TSource()

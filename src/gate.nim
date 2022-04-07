@@ -14,7 +14,6 @@ type
 
   Parent {.inheritable.} = ref object 
     update: proc(p: Parent): seq[Parent]
-  Element* = Parent
   Nat = static[Natural]
 
   SignalReceiver[N: Nat] = ref object of Parent
@@ -41,6 +40,7 @@ proc `~~`*(output: Output, input: Input) =
   "Cannot connect multiple times to the same input")
   input.connected = true
   output.connections.add input
+  input.signal = output.lastSignal
 
 proc propagate(output: Output, signal: Signal): seq[Parent] =
   result = output.connections.mapIt(it.parent)
@@ -64,8 +64,16 @@ proc updateDownstream(T: typedesc, fn: SignalUpdater, gate: Parent): seq[Parent]
 template addUpdateField(parent: Parent, fn: SignalUpdater) =
   parent.update = proc(p: Parent): seq[Parent] =
     updateDownstream(parent.typeOf, fn, p)
-proc update*(p: Parent): seq[Parent] =
+proc update(p: Parent): seq[Parent] =
   p.update(p)
+
+proc updateAll*(fromElements: varargs[Parent]) =
+  var elements = @fromElements
+  while elements.len > 0:
+    var next: seq[Parent] = @[]
+    for element in elements.deduplicate:
+      next.add update(element)
+    elements = next
 
 proc output*(source: TSource): Output = source.output
 
@@ -90,11 +98,14 @@ proc Sink*(updateFn: proc(_: varargs[Signal]) = proc(_: varargs[Signal]) = disca
   result.update = proc(p: Parent): seq[Parent] =
     updateNoDownstream(sink.typeOf, updateFn, p)
 
-proc Source*(updateFn: SignalUpdater): TSource =
+proc Source*(updateFn: proc(): Signal): TSource =
   result = TSource()
   result.inputs = []
   result.output = newOutput()
-  result.addUpdateField updateFn
+  proc wrap(fn: proc(): Signal): SignalUpdater =
+    result = proc(_: varargs[Signal]): Signal =
+      fn()
+  result.addUpdateField wrap(updateFn)
 
 macro declareGate[N: Nat](T: typedesc[Gate[N]]) =
   var inputs = newTree(nnkBracket)

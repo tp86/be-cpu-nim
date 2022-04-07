@@ -3,7 +3,7 @@ import signal as s
 import gate
 
 var signal = L
-proc getSignal(_: varargs[Signal]): Signal = signal
+proc getSignal(): Signal = signal
 
 suite "connections":
 
@@ -36,27 +36,15 @@ suite "signal propagation":
     let
       source = Source(getSignal)
       sink1 = Sink()
-      sink2 = Sink()
 
+    signal = L
     check sink1.input.signal == L
     source.output ~~ sink1.input
-    discard source.update
+    updateAll source
     check sink1.input.signal == L
     signal = H
-    discard source.update
+    updateAll source
     check sink1.input.signal == H
-    source.output ~~ sink2.input
-    # not propagated on connection
-    check sink2.input.signal == L
-    discard source.update
-    # not propagated since signal hasn't changed
-    check sink2.input.signal == L
-    signal = L
-    discard source.update
-    check sink2.input.signal == L
-    signal = H
-    discard source.update
-    check sink2.input.signal == H
 
   test "source gate propagates signal on update to all connected inputs":
     let
@@ -70,11 +58,12 @@ suite "signal propagation":
       sink1.input.signal == L
       sink2.input.signal == L
     signal = H
-    discard source.update
+    updateAll source
     check:
       sink1.input.signal == H
       sink2.input.signal == H
 
+#[
   test "source gate returns connected gates on changed signal propagation":
     let
       source = Source(getSignal)
@@ -85,16 +74,19 @@ suite "signal propagation":
     source.output ~~ sink2.input
     let gates = source.update
     check gates.len == 2
+]#
 
-  test "gate does not propagate signal on connection":
+  test "gate propagates signal on connection":
     let
       source = Source(getSignal)
       sink = Sink()
 
     signal = H
+    updateAll source
     source.output ~~ sink.input
-    check sink.input.signal == L
+    check sink.input.signal == H
 
+#[
   test "source gate always propagates on first update":
     let
       source = Source(getSignal)
@@ -105,14 +97,7 @@ suite "signal propagation":
     check next.len > 0
     next = source.update
     check next.len == 0
-
-proc updateAll(fromElements: varargs[Element]) =
-  var elements = @fromElements
-  while elements.len > 0:
-    var next: seq[Element] = @[]
-    for element in elements:
-      next.add element.update
-    elements = next.deduplicate
+]#
 
 suite "broadcast":
 
@@ -164,11 +149,11 @@ suite "not":
     updateAll source
     check sink.input.signal == L
 
-template testLogic(g: Element, cases: openarray[(array[2, Signal], Signal)]) =
+template testLogic(g: untyped, cases: openarray[(array[2, Signal], Signal)]) =
   var signalA, signalB: Signal
   let
-    sourceA = Source(proc(_: varargs[Signal]): Signal = signalA)
-    sourceB = Source(proc(_: varargs[Signal]): Signal = signalB)
+    sourceA = Source(proc(): Signal = signalA)
+    sourceB = Source(proc(): Signal = signalB)
     sink = Sink()
   sourceA.output ~~ g.A
   sourceB.output ~~ g.B

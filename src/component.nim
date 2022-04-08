@@ -20,6 +20,12 @@ type
   TD = ref object
     D, EN: Input
     Q, Q̅: Output
+  TEdgeH = ref object
+    CLK: Input
+    Edge: Output
+  TDFF = ref object
+    D, CLK: Input
+    Q, Q̅: Output
 
 proc SR*(): TSR =
   result = TSR()
@@ -57,3 +63,36 @@ proc D*(): TD =
   result.Q̅ = sr.Q̅
   updateAll dB, enB
 TD.getters
+
+import signal
+proc EdgeH*(): TEdgeH =
+  result = TEdgeH()
+  let
+    clkB = Broadcast()
+    clkNot1 = Not()
+    clkNot2 = Not()
+    clkNot3 = Not()
+    clkAnd = And()
+  # for edge detector with one Not gate order of connections would matter!
+  # clkB.output ~~ clkAnd.C BEFORE clkB.output ~~ clkNot1.A
+  clkB.output ~~ clkNot1.A
+  clkNot1.B ~~ clkNot2.A
+  clkNot2.B ~~ clkNot3.A
+  clkNot3.B ~~ clkAnd.B
+  clkB.output ~~ clkAnd.A
+  result.CLK = clkB.input
+  result.Edge = clkAnd.C
+  updateAll clkB
+TEdgeH.getters
+
+proc DFF*(): TDFF =
+  result = TDFF()
+  let
+    d = D()
+    edge = EdgeH()
+  edge.Edge ~~ d.EN
+  result.D = d.D
+  result.CLK = edge.CLK
+  result.Q = d.Q
+  result.Q̅ = d.Q̅
+TDFF.getters

@@ -17,6 +17,9 @@ type
   TSR = ref object
     S, R: Input
     Q, Q̅: Output
+  TD = ref object
+    D, EN: Input
+    Q, Q̅: Output
 
 proc SR*(): TSR =
   result = TSR()
@@ -30,5 +33,27 @@ proc SR*(): TSR =
   result.Q̅ = sNor.C
   result.Q = rNor.C
   updateAll sNor, rNor
-
 TSR.getters
+
+proc D*(): TD =
+  result = TD()
+  let
+    sr = SR()
+    sAnd = And()
+    rAnd = And()
+    dNot = Not()
+    dB = Broadcast()
+    enB = Broadcast()
+  dB.output ~~ sAnd.A
+  dB.output ~~ dNot.A
+  dNot.B ~~ rAnd.A
+  enB.output ~~ sAnd.B
+  enB.output ~~ rAnd.B
+  sAnd.C ~~ sr.S
+  rAnd.C ~~ sr.R
+  result.D = dB.input
+  result.EN = enB.input
+  result.Q = sr.Q
+  result.Q̅ = sr.Q̅
+  updateAll dB, enB
+TD.getters

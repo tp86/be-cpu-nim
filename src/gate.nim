@@ -32,7 +32,8 @@ type
 proc newInput(parent: Parent): Input = Input(parent: parent)
 proc newOutput(): Output = Output()
 
-proc signal*(input: Input): Signal = input.signal
+proc update(p: Parent): seq[Parent] =
+  p.update(p)
 
 proc `~~`*(output: Output, input: Input) =
   if input.connected:
@@ -41,6 +42,7 @@ proc `~~`*(output: Output, input: Input) =
   input.connected = true
   output.connections.add input
   input.signal = output.lastSignal
+  discard update(input.parent)
 
 proc propagate(output: Output, signal: Signal): seq[Parent] =
   result = output.connections.mapIt(it.parent)
@@ -64,8 +66,6 @@ proc updateDownstream(T: typedesc, fn: SignalUpdater, gate: Parent): seq[Parent]
 template addUpdateField(parent: Parent, fn: SignalUpdater) =
   parent.update = proc(p: Parent): seq[Parent] =
     updateDownstream(parent.typeOf, fn, p)
-proc update(p: Parent): seq[Parent] =
-  p.update(p)
 
 proc updateAll*(fromElements: varargs[Parent]) =
   var elements = @fromElements

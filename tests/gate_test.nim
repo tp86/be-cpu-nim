@@ -4,6 +4,8 @@ import gate
 
 var signal = L
 proc getSignal(): Signal = signal
+var output: Signal
+proc setResult(s: varargs[Signal]) = output = s[0]
 
 suite "connections":
 
@@ -29,39 +31,44 @@ suite "connections":
 suite "signal propagation":
 
   test "default (unconnected) input signal value is low":
-    let sink = Sink()
-    check sink.input.signal == L
+    let sink = Sink(setResult)
+    updateAll sink
+    check output == L
 
   test "source gate propagates signal change on update":
     let
       source = Source(getSignal)
-      sink1 = Sink()
+      sink1 = Sink(setResult)
 
     signal = L
-    check sink1.input.signal == L
+    updateAll sink1
+    check output == L
     source.output ~~ sink1.input
     updateAll source
-    check sink1.input.signal == L
+    check output == L
     signal = H
     updateAll source
-    check sink1.input.signal == H
+    check output == H
 
   test "source gate propagates signal on update to all connected inputs":
+    var
+      out1, out2: Signal
     let
       source = Source(getSignal)
-      sink1 = Sink()
-      sink2 = Sink()
+      sink1 = Sink(proc(s: varargs[Signal]) = out1 = s[0])
+      sink2 = Sink(proc(s: varargs[Signal]) = out2 = s[0])
 
     source.output ~~ sink1.input
     source.output ~~ sink2.input
+    updateAll sink1, sink2
     check:
-      sink1.input.signal == L
-      sink2.input.signal == L
+      out1 == L
+      out2 == L
     signal = H
     updateAll source
     check:
-      sink1.input.signal == H
-      sink2.input.signal == H
+      out1 == H
+      out2 == H
 
 #[
   test "source gate returns connected gates on changed signal propagation":
@@ -79,12 +86,12 @@ suite "signal propagation":
   test "gate propagates signal on connection":
     let
       source = Source(getSignal)
-      sink = Sink()
+      sink = Sink(setResult)
 
     signal = H
     updateAll source
     source.output ~~ sink.input
-    check sink.input.signal == H
+    check output == H
 
 #[
   test "source gate always propagates on first update":
@@ -112,17 +119,17 @@ suite "broadcast":
   test "logic":
     let
       source = Source(getSignal)
-      sink = Sink()
+      sink = Sink(setResult)
     source.output ~~ g.input
     g.output ~~ sink.input
 
     signal = L
     updateAll source
-    check sink.input.signal == L
+    check output == L
 
     signal = H
     updateAll source
-    check sink.input.signal == H
+    check output == H
 
 suite "not":
 
@@ -137,24 +144,24 @@ suite "not":
   test "logic":
     let
       source = Source(getSignal)
-      sink = Sink()
+      sink = Sink(setResult)
     source.output ~~ g.A
     g.B ~~ sink.input
 
     signal = L
     updateAll source
-    check sink.input.signal == H
+    check output == H
 
     signal = H
     updateAll source
-    check sink.input.signal == L
+    check output == L
 
 template testLogic(g: untyped, cases: openarray[(array[2, Signal], Signal)]) =
   var signalA, signalB: Signal
   let
     sourceA = Source(proc(): Signal = signalA)
     sourceB = Source(proc(): Signal = signalB)
-    sink = Sink()
+    sink = Sink(setResult)
   sourceA.output ~~ g.A
   sourceB.output ~~ g.B
   g.C ~~ sink.input
@@ -163,7 +170,7 @@ template testLogic(g: untyped, cases: openarray[(array[2, Signal], Signal)]) =
     signalA = inputs[0]
     signalB = inputs[1]
     updateAll sourceA, sourceB
-    check sink.input.signal == expected
+    check output == expected
 
 suite "and":
 

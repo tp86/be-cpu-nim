@@ -6,7 +6,11 @@ import signal
 suite "SR latch":
 
   setup:
-    let sr = SR()
+    var q, q̅: Signal
+    let
+      sr = SR()
+      sinkQ = Sink(proc(s: varargs[Signal]) = q = s[0])
+      sinkQ̅ = Sink(proc(s: varargs[Signal]) = q̅ = s[0])
 
   test "interface":
     check:
@@ -16,10 +20,7 @@ suite "SR latch":
       sr.Q̅ is Output
 
   test "init":
-    let
-      source = Source(proc(): Signal = L)
-      sinkQ = Sink()
-      sinkQ̅ = Sink()
+    let source = Source(proc(): Signal = L)
 
     source.output ~~ sr.S
     source.output ~~ sr.R
@@ -28,8 +29,8 @@ suite "SR latch":
 
     updateAll source
     check:
-      sinkQ.input.signal == L
-      sinkQ̅.input.signal == H
+      q == L
+      q̅ == H
 
   test "logic":
     var
@@ -37,8 +38,6 @@ suite "SR latch":
     let
       sourceS = Source(proc(): Signal = signals.S)
       sourceR = Source(proc(): Signal = signals.R)
-      sinkQ = Sink()
-      sinkQ̅ = Sink()
 
     sourceS.output ~~ sr.S
     sourceR.output ~~ sr.R
@@ -61,5 +60,5 @@ suite "SR latch":
       signals.R = c.R
       updateAll sourceS, sourceR
       check:
-        sinkQ.input.signal == c.Q
-        sinkQ̅.input.signal == c.Q̅
+        q == c.Q
+        q̅ == c.Q̅

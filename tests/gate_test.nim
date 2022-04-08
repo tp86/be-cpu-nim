@@ -5,7 +5,7 @@ import gate
 var signal = L
 proc getSignal(): Signal = signal
 var output: Signal
-proc setResult(s: varargs[Signal]) = output = s[0]
+proc setResult(s: Signal) = output = s
 
 suite "connections":
 
@@ -55,8 +55,8 @@ suite "signal propagation":
       out1, out2: Signal
     let
       source = Source(getSignal)
-      sink1 = Sink(proc(s: varargs[Signal]) = out1 = s[0])
-      sink2 = Sink(proc(s: varargs[Signal]) = out2 = s[0])
+      sink1 = Sink(proc(s: Signal) = out1 = s)
+      sink2 = Sink(proc(s: Signal) = out2 = s)
 
     source.output ~~ sink1.input
     source.output ~~ sink2.input

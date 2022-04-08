@@ -91,12 +91,15 @@ proc B*(gate: Gate[1]): Output = gate.output
 
 proc C*(gate: Gate[2]): Output = gate.output
 
-proc Sink*(updateFn: proc(_: varargs[Signal]) = proc(_: varargs[Signal]) = discard): TSink =
+proc Sink*(updateFn: proc(_: Signal) = proc(_: Signal) = discard): TSink =
   let sink = TSink()
   result = sink
   result.inputs = [newInput(result)]
+  proc wrap(fn: proc(_: Signal)): proc(_: varargs[Signal]) =
+    result = proc(s: varargs[Signal]) =
+      fn(s[0])
   result.update = proc(p: Parent): seq[Parent] =
-    updateNoDownstream(sink.typeOf, updateFn, p)
+    updateNoDownstream(sink.typeOf, wrap(updateFn), p)
 
 proc Source*(updateFn: proc(): Signal): TSource =
   result = TSource()

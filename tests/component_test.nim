@@ -9,8 +9,8 @@ suite "SR latch":
     var q, q̅: Signal
     let
       sr = SR()
-      sinkQ = Sink(proc(s: varargs[Signal]) = q = s[0])
-      sinkQ̅ = Sink(proc(s: varargs[Signal]) = q̅ = s[0])
+      sinkQ = Sink(proc(s: Signal) = q = s)
+      sinkQ̅ = Sink(proc(s: Signal) = q̅ = s)
 
   test "interface":
     check:
@@ -69,8 +69,8 @@ suite "D latch":
     var q, q̅: Signal
     let
       d = D()
-      sinkQ = Sink(proc(s: varargs[Signal]) = q = s[0])
-      sinkQ̅ = Sink(proc(s: varargs[Signal]) = q̅ = s[0])
+      sinkQ = Sink(proc(s: Signal) = q = s)
+      sinkQ̅ = Sink(proc(s: Signal) = q̅ = s)
 
   test "interface":
     check:
@@ -133,7 +133,7 @@ suite "edge detector":
     var signals: seq[Signal]
     let
       ed = EdgeH()
-      sink = Sink(proc(s: varargs[Signal]) = signals.add s)
+      sink = Sink(proc(s: Signal) = signals.add s)
 
   test "interface":
     check:
@@ -171,8 +171,8 @@ suite "D Flip-Flop":
     var q, q̅: Signal
     let
       d = DFF()
-      sinkQ = Sink(proc(s: varargs[Signal]) = q = s[0])
-      sinkQ̅ = Sink(proc(s: varargs[Signal]) = q̅ = s[0])
+      sinkQ = Sink(proc(s: Signal) = q = s)
+      sinkQ̅ = Sink(proc(s: Signal) = q̅ = s)
 
   test "interface":
     check:
